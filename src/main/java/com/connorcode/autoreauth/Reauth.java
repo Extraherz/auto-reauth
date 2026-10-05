@@ -81,17 +81,26 @@ public class Reauth {
     }
 
     public static CompletableFuture<Void> attemptReauth(Screen parent, Config.Account account) {
-        return MicrosoftAuth.authenticate(account.accessToken()).thenAccept(session -> {
-            try {
-                AuthUtils.setSession(session);
-            } catch (AuthenticationException e) {
-                log.error("Error re-authenticating", e);
-            }
-            authStatus = AuthUtils.getAuthStatus();
-            Misc.sendToast("AutoReauth", String.format("Authenticated as %s!", session.getName()));
-        }).exceptionally(e -> {
+        return MicrosoftAuth.authenticate(account.accessToken())
+                .thenAccept(result -> {
+                    var session = result.session();
+
+                    config.addAccount(new Config.Account(result.accessToken(), session));
+                    config.save();
+
+                    try {
+                        AuthUtils.setSession(session);
+                    } catch (AuthenticationException e) {
+                        log.error("Error re-authenticating", e);
+                    }
+
+                    authStatus = AuthUtils.getAuthStatus();
+
+                    Misc.sendToast("AutoReauth", String.format("Authenticated as %s!", session.getName()));
+                }).exceptionally(e -> {
             log.error("Error re-authenticating", e);
-            client.execute(() -> client.gui.setScreen(new ErrorScreen(parent, "Error re-authenticating", e.toString())));
+            client.execute(() ->
+                    client.gui.setScreen(new ErrorScreen(parent, "Error re-authenticating", e.toString())));
             return null;
         });
     }

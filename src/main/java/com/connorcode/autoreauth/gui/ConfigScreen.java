@@ -64,9 +64,9 @@ public class ConfigScreen extends Screen {
             if (selected != null) config.defaultAccount = selected.account;
         }).width(74).build());
         footerTop.addChild(Button.builder(Component.nullToEmpty("Add Account"), (button) -> MicrosoftAuth.getCode(semaphore)
-                .thenCompose(MicrosoftAuth::getAccessToken).thenCompose(access -> MicrosoftAuth.authenticate(access)
-                        .thenApply(session -> new java.util.AbstractMap.SimpleEntry<>(access, session))).thenAccept(pair -> {
-                    config.addAccount(new Config.Account(pair.getKey(), pair.getValue()));
+                .thenCompose(MicrosoftAuth::authenticate)
+                .thenAccept(result -> {
+                    config.addAccount(new Config.Account(result.accessToken(), result.session()));
                     config.save();
 
                     authStatus = AuthUtils.getAuthStatus();

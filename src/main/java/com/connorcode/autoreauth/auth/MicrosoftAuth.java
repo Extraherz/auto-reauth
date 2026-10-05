@@ -143,24 +143,33 @@ public class MicrosoftAuth {
         });
     }
 
-    public static CompletableFuture<User> authenticate(
+    public static CompletableFuture<AuthenticationResult> authenticate(
             AuthorizationCode authorizationCode
     ) {
         return getAccessToken(authorizationCode)
-                .thenCompose(MicrosoftAuth::authenticateXbox)
-                .thenCompose(MicrosoftAuth::obtainXstsToken)
-                .thenCompose(MicrosoftAuth::authenticateMinecraft)
-                .thenCompose(MicrosoftAuth::createSession);
+                .thenCompose(MicrosoftAuth::authenticateAccessToken);
     }
 
-    public static CompletableFuture<User> authenticate(
+    public static CompletableFuture<AuthenticationResult> authenticate(
             AccessToken token
     ) {
         return refreshAccessToken(token.refreshToken())
-                .thenCompose(MicrosoftAuth::authenticateXbox)
+                .thenCompose(MicrosoftAuth::authenticateAccessToken);
+    }
+
+    private static CompletableFuture<AuthenticationResult> authenticateAccessToken(
+            AccessToken token
+    ) {
+        return authenticateXbox(token)
                 .thenCompose(MicrosoftAuth::obtainXstsToken)
                 .thenCompose(MicrosoftAuth::authenticateMinecraft)
-                .thenCompose(MicrosoftAuth::createSession);
+                .thenCompose(MicrosoftAuth::createSession)
+                .thenApply(session ->
+                        new AuthenticationResult(
+                                token,
+                                session
+                        )
+                );
     }
 
     public static CompletableFuture<AccessToken> getAccessToken(AuthorizationCode authorizationCode) {
@@ -334,6 +343,9 @@ public class MicrosoftAuth {
     }
 
     public record AccessToken(String accessToken, String refreshToken) {
+    }
+
+    public record AuthenticationResult(AccessToken accessToken, User session) {
     }
 
     public record XboxAuth(String xblToken, String userHash) {
