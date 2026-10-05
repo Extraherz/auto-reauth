@@ -143,10 +143,6 @@ public class MicrosoftAuth {
         });
     }
 
-    public static void debugLog(String fmt, Object... args) {
-        if (config.debug) log.info(fmt, args);
-    }
-
     public static CompletableFuture<User> authenticate(
             AuthorizationCode authorizationCode
     ) {

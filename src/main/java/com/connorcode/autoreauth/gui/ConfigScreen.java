@@ -83,7 +83,7 @@ public class ConfigScreen extends Screen {
         footerBottom.addChild(callbackButton(clicked -> {
             config.debug ^= clicked;
             return "Debug: " + (config.debug ? "On" : "Off");
-        }).width(100).tooltip(Tooltip.create(Component.nullToEmpty("Warning: Debug mode will send authentication tokens in the log.")))
+        }).width(100).tooltip(Tooltip.create(Component.nullToEmpty("Enables additional diagnostic logging.")))
                 .build());
         footerBottom.addChild(callbackButton(clicked -> {
             config.auto ^= clicked;
