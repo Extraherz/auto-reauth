@@ -18,6 +18,11 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.security.SecureRandom;
+import java.util.Base64;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CancellationException;
@@ -42,14 +47,34 @@ public class MicrosoftAuth {
     public static final URI MINECRAFT_AUTH_URI = URI.create("https://api.minecraftservices.com/authentication/login_with_xbox");
     public static final URI PROFILE_URI = URI.create("https://api.minecraftservices.com/minecraft/profile");
 
+    private static String generateCodeVerifier() {
+        var bytes = new byte[32];
+        new SecureRandom().nextBytes(bytes);
+
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+    }
+
+    private static String createCodeChallenge(String codeVerifier) {
+        try {
+            var digest = MessageDigest.getInstance("SHA-256");
+            var hash = digest.digest(codeVerifier.getBytes(StandardCharsets.US_ASCII));
+
+            return Base64.getUrlEncoder().withoutPadding().encodeToString(hash);
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 is not available", e);
+        }
+    }
+
     static JsonElement getIfPresent(JsonObject json, String key, String context) throws AuthException {
         if (!json.has(key)) throw new AuthException(String.format("Missing key '%s' in %s", key, context), null);
         return json.get(key);
     }
 
-    public static CompletableFuture<String> getCode(Semaphore semaphore) {
+    public static CompletableFuture<AuthorizationCode> getCode(Semaphore semaphore) {
         return CompletableFuture.supplyAsync(() -> {
             var state = Misc.randomString(10);
+            var codeVerifier = generateCodeVerifier();
+            var codeChallenge = createCodeChallenge(codeVerifier);
 
             HttpServer server;
             AtomicReference<String> finalCode = new AtomicReference<>("");
@@ -95,6 +120,8 @@ public class MicrosoftAuth {
             builder.addParameter("redirect_uri", REDIRECT_URI);
             builder.addParameter("scope", "XboxLive.signin offline_access");
             builder.addParameter("state", state);
+            builder.addParameter("code_challenge", codeChallenge);
+            builder.addParameter("code_challenge_method", "S256");
             var uri = builder.build();
 
             server.start();
@@ -112,7 +139,7 @@ public class MicrosoftAuth {
 
             if (finalCode.get().isEmpty()) throw new CompletionException(new AbortException());
 
-            return finalCode.get();
+            return new AuthorizationCode(finalCode.get(), codeVerifier);
         });
     }
 
@@ -120,26 +147,39 @@ public class MicrosoftAuth {
         if (config.debug) log.info(fmt, args);
     }
 
-    public static CompletableFuture<User> authenticate(String code) {
-        return getAccessToken(code).thenCompose(MicrosoftAuth::authenticateXbox)
-                .thenCompose(MicrosoftAuth::obtainXstsToken).thenCompose(MicrosoftAuth::authenticateMinecraft)
+    public static CompletableFuture<User> authenticate(
+            AuthorizationCode authorizationCode
+    ) {
+        return getAccessToken(authorizationCode)
+                .thenCompose(MicrosoftAuth::authenticateXbox)
+                .thenCompose(MicrosoftAuth::obtainXstsToken)
+                .thenCompose(MicrosoftAuth::authenticateMinecraft)
                 .thenCompose(MicrosoftAuth::createSession);
     }
 
-    public static CompletableFuture<User> authenticate(AccessToken token) {
-        // TODO: Use access token if its still valid
-        return refreshAccessToken(token.refreshToken).thenCompose(MicrosoftAuth::authenticateXbox)
-                .thenCompose(MicrosoftAuth::obtainXstsToken).thenCompose(MicrosoftAuth::authenticateMinecraft)
+    public static CompletableFuture<User> authenticate(
+            AccessToken token
+    ) {
+        return refreshAccessToken(token.refreshToken())
+                .thenCompose(MicrosoftAuth::authenticateXbox)
+                .thenCompose(MicrosoftAuth::obtainXstsToken)
+                .thenCompose(MicrosoftAuth::authenticateMinecraft)
                 .thenCompose(MicrosoftAuth::createSession);
     }
 
-    public static CompletableFuture<AccessToken> getAccessToken(String code) {
+    public static CompletableFuture<AccessToken> getAccessToken(AuthorizationCode authorizationCode) {
         log.info("Getting access token");
         return CompletableFuture.supplyAsync(() -> {
             try (var client = HttpClient.newHttpClient()) {
                 var req = HttpRequest.newBuilder(ACCESS_TOKEN_URI)
                         .header("Content-Type", "application/x-www-form-urlencoded")
-                        .POST(ofFormUrlEncodedData(Map.of("client_id", CLIENT_ID, "code", code, "redirect_uri", REDIRECT_URI, "grant_type", "authorization_code")))
+                        .POST(ofFormUrlEncodedData(Map.of(
+                                "client_id", CLIENT_ID,
+                                "code", authorizationCode.code(),
+                                "redirect_uri", REDIRECT_URI,
+                                "grant_type", "authorization_code",
+                                "code_verifier", authorizationCode.codeVerifier()
+                        )))
                         .build();
                 var result = client.send(req, HttpResponse.BodyHandlers.ofString());
                 var str = result.body();
@@ -292,6 +332,9 @@ public class MicrosoftAuth {
         public String toString() {
             return String.format("%s: %s", super.toString(), cause == null ? "" : cause.toString());
         }
+    }
+
+    public record AuthorizationCode(String code, String codeVerifier) {
     }
 
     public record AccessToken(String accessToken, String refreshToken) {
