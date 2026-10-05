@@ -22,8 +22,17 @@ public final class CredentialStores {
             );
         }
 
+        if (osName.contains("mac")) {
+            return new MacOsKeychainCredentialStore();
+        }
+
+        if (osName.contains("linux")) {
+            return new LinuxSecretServiceCredentialStore();
+        }
+
         throw new UnsupportedOperationException(
-                "Secure credential storage is not yet supported on this operating system"
+                "Secure credential storage is not supported on this operating system: "
+                        + osName
         );
     }
 }
