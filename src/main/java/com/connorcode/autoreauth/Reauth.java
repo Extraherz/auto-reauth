@@ -81,11 +81,27 @@ public class Reauth {
     }
 
     public static CompletableFuture<Void> attemptReauth(Screen parent, Config.Account account) {
-        return MicrosoftAuth.authenticate(account.accessToken())
+        var refreshToken =
+                config.getRefreshToken(account);
+
+        if (refreshToken.isEmpty()) {
+            return CompletableFuture.failedFuture(
+                    new IllegalStateException(
+                            "No stored refresh token for account "
+                                    + account.username()
+                    )
+            );
+        }
+        return MicrosoftAuth.authenticate(new MicrosoftAuth.AccessToken("", refreshToken.get()))
                 .thenAccept(result -> {
                     var session = result.session();
 
-                    config.addAccount(new Config.Account(result.accessToken(), session));
+                    var updatedAccount = new Config.Account(session);
+
+                    config.addAccount(updatedAccount);
+
+                    config.saveRefreshToken(updatedAccount, result.accessToken().refreshToken());
+
                     config.save();
 
                     try {

@@ -1,6 +1,8 @@
 package com.connorcode.autoreauth;
 
 import com.connorcode.autoreauth.auth.MicrosoftAuth;
+import com.connorcode.autoreauth.auth.credentials.CredentialStore;
+import com.connorcode.autoreauth.auth.credentials.CredentialStores;
 import net.minecraft.client.User;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
@@ -16,6 +18,9 @@ import static com.connorcode.autoreauth.Main.directory;
 
 public class Config {
     private static final Path CONFIG_PATH = directory.resolve("config.nbt");
+
+    private static final CredentialStore CREDENTIAL_STORE =
+            CredentialStores.create(directory);
 
     public boolean debug = false;
     public boolean auto = true;
@@ -37,8 +42,14 @@ public class Config {
     }
 
     public void removeAccount(Account account) {
-        if (defaultAccount.equals(account)) defaultAccount = null;
+        if (account.equals(defaultAccount)) {
+            defaultAccount = null;
+        }
+
+        deleteRefreshToken(account);
         accounts.removeIf(a -> a.equals(account));
+
+        save();
     }
 
     public Optional<Account> getAccount(UUID uuid) {
@@ -63,13 +74,30 @@ public class Config {
 
             this.debug = tag.getBoolean("debug").orElse(false);
             this.auto = tag.getBoolean("auto").orElse(true);
-            this.accounts = tag.getList("accounts").orElse(new ListTag()).stream()
-                    .map(account -> new Account(account.asCompound().orElseThrow()))
-                    .collect(ArrayList::new, ArrayList::add, ArrayList::addAll);
+            var accountTags = tag.getList("accounts").orElse(new ListTag());
+
+            var loadedAccounts = new ArrayList<Account>();
+
+            for (var element : accountTags) {
+                var accountTag = element.asCompound().orElseThrow();
+
+                var account = new Account(accountTag);
+
+                loadedAccounts.add(account);
+
+                var legacyRefreshToken = accountTag.getString("refreshToken");
+
+                if (legacyRefreshToken.isPresent()) {
+                    saveRefreshToken(account, legacyRefreshToken.get());
+                }
+            }
+
+            this.accounts = loadedAccounts;
 
             int defaultIdx = tag.getInt("default").orElse(-1);
-            this.defaultAccount = defaultIdx > 0 && defaultIdx < accounts.size() ? this.accounts.get(defaultIdx) : null;
+            this.defaultAccount = defaultIdx >= 0 && defaultIdx < accounts.size() ? this.accounts.get(defaultIdx) : null;
 
+            save();
             return true;
         } catch (IOException e) {
             throw new RuntimeException(e);
@@ -96,21 +124,30 @@ public class Config {
         }
     }
 
-    public record Account(MicrosoftAuth.AccessToken accessToken, UUID uuid, String username) {
-        public Account(MicrosoftAuth.AccessToken access, User session) {
-            this(access, session.getProfileId(), session.getName());
+    public Optional<String> getRefreshToken(Account account) {
+        return CREDENTIAL_STORE.load(account.uuid());
+    }
+
+    public void saveRefreshToken(Account account, String refreshToken) {
+        CREDENTIAL_STORE.save(account.uuid(), refreshToken);
+    }
+
+    public void deleteRefreshToken(Account account) {
+        CREDENTIAL_STORE.delete(account.uuid());
+    }
+
+    public record Account(UUID uuid, String username) {
+        public Account(User session) {
+            this(session.getProfileId(), session.getName());
         }
 
         public Account(CompoundTag nbt) {
-            this(new MicrosoftAuth.AccessToken(nbt.getString("accessToken").orElseThrow(), nbt.getString("refreshToken")
-                    .orElseThrow()), Misc.parseUUID(nbt.getString("uuid").orElseThrow()), nbt.getString("username")
-                    .orElseThrow());
+            this(Misc.parseUUID(nbt.getString("uuid").orElseThrow()),
+                    nbt.getString("username").orElseThrow());
         }
 
         public CompoundTag serialize() {
             var tag = new CompoundTag();
-            tag.putString("accessToken", accessToken.accessToken());
-            tag.putString("refreshToken", accessToken.refreshToken());
             tag.putString("uuid", uuid.toString());
             tag.putString("username", username);
             return tag;

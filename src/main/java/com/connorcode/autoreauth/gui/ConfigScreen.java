@@ -66,7 +66,13 @@ public class ConfigScreen extends Screen {
         footerTop.addChild(Button.builder(Component.nullToEmpty("Add Account"), (button) -> MicrosoftAuth.getCode(semaphore)
                 .thenCompose(MicrosoftAuth::authenticate)
                 .thenAccept(result -> {
-                    config.addAccount(new Config.Account(result.accessToken(), result.session()));
+                    var account = new Config.Account(result.session());
+
+                    config.addAccount(account);
+
+                    config.saveRefreshToken(account, result.accessToken().refreshToken());
+
+                    config.save();
                     config.save();
 
                     authStatus = AuthUtils.getAuthStatus();
