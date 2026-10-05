@@ -143,33 +143,20 @@ public class MicrosoftAuth {
         });
     }
 
-    public static CompletableFuture<AuthenticationResult> authenticate(
-            AuthorizationCode authorizationCode
-    ) {
-        return getAccessToken(authorizationCode)
-                .thenCompose(MicrosoftAuth::authenticateAccessToken);
+    public static CompletableFuture<AuthenticationResult> authenticate(AuthorizationCode authorizationCode) {
+        return getAccessToken(authorizationCode).thenCompose(MicrosoftAuth::authenticateAccessToken);
     }
 
-    public static CompletableFuture<AuthenticationResult> authenticate(
-            AccessToken token
-    ) {
-        return refreshAccessToken(token.refreshToken())
-                .thenCompose(MicrosoftAuth::authenticateAccessToken);
+    public static CompletableFuture<AuthenticationResult> authenticate(String refreshToken) {
+        return refreshAccessToken(refreshToken).thenCompose(MicrosoftAuth::authenticateAccessToken);
     }
 
-    private static CompletableFuture<AuthenticationResult> authenticateAccessToken(
-            AccessToken token
-    ) {
+    private static CompletableFuture<AuthenticationResult> authenticateAccessToken(AccessToken token) {
         return authenticateXbox(token)
                 .thenCompose(MicrosoftAuth::obtainXstsToken)
                 .thenCompose(MicrosoftAuth::authenticateMinecraft)
                 .thenCompose(MicrosoftAuth::createSession)
-                .thenApply(session ->
-                        new AuthenticationResult(
-                                token,
-                                session
-                        )
-                );
+                .thenApply(session -> new AuthenticationResult(token, session));
     }
 
     public static CompletableFuture<AccessToken> getAccessToken(AuthorizationCode authorizationCode) {

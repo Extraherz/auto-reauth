@@ -92,7 +92,7 @@ public class Reauth {
                     )
             );
         }
-        return MicrosoftAuth.authenticate(new MicrosoftAuth.AccessToken("", refreshToken.get()))
+        return MicrosoftAuth.authenticate(refreshToken.get())
                 .thenAccept(result -> {
                     var session = result.session();
 
