@@ -12,6 +12,7 @@ import net.minecraft.util.Util;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -54,7 +55,7 @@ public class MicrosoftAuth {
             AtomicReference<String> finalCode = new AtomicReference<>("");
 
             try {
-                server = HttpServer.create(new InetSocketAddress(PORT), 0);
+                server = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), PORT), 0);
                 server.createContext("/callback", ctx -> {
                     var map = parseQuery(ctx.getRequestURI().getRawQuery());
 
