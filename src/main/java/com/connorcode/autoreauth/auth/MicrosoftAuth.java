@@ -77,7 +77,7 @@ public class MicrosoftAuth {
                     }
 
                     finalCode.set(code);
-                    log.info("Got code: {}", finalCode.get());
+                    log.info("Received Microsoft OAuth callback");
                     ctx.sendResponseHeaders(200, 0);
                     ctx.getResponseBody().write("You can close this tab now.".getBytes());
                     ctx.close();
@@ -143,7 +143,6 @@ public class MicrosoftAuth {
                 var result = client.send(req, HttpResponse.BodyHandlers.ofString());
                 var str = result.body();
 
-                debugLog("Access token response: {}", str);
                 var json = GsonHelper.parse(str);
 
                 var ctx = "access token response from code";
@@ -166,7 +165,6 @@ public class MicrosoftAuth {
                         .build();
                 var str = client.send(req, HttpResponse.BodyHandlers.ofString()).body();
 
-                debugLog("Refresh token response: {}", str);
                 var json = GsonHelper.parse(str);
 
                 var ctx = "access token response from refresh token";
@@ -196,7 +194,6 @@ public class MicrosoftAuth {
                         .POST(HttpRequest.BodyPublishers.ofString(jsonBuilder.toString())).build();
                 var str = client.send(req, HttpResponse.BodyHandlers.ofString()).body();
 
-                debugLog("Xbox auth response: {}", str);
                 var json = GsonHelper.parse(str);
 
                 var ctx = "xbox auth response";
@@ -228,7 +225,6 @@ public class MicrosoftAuth {
                         .POST(HttpRequest.BodyPublishers.ofString(jsonBuilder.toString())).build();
                 var str = client.send(req, HttpResponse.BodyHandlers.ofString()).body();
 
-                debugLog("XSTS auth response: {}", str);
                 var json = GsonHelper.parse(str);
 
                 var ctx = "xsts auth response";
@@ -251,7 +247,6 @@ public class MicrosoftAuth {
                         .POST(HttpRequest.BodyPublishers.ofString(jsonBuilder.toString())).build();
                 var str = client.send(req, HttpResponse.BodyHandlers.ofString()).body();
 
-                debugLog("Minecraft auth response: {}", str);
                 var json = GsonHelper.parse(str);
 
                 var ctx = "minecraft auth response";
@@ -271,7 +266,6 @@ public class MicrosoftAuth {
                         .header("Authorization", "Bearer " + minecraftAuth.accessToken).GET().build();
                 var str = client.send(req, HttpResponse.BodyHandlers.ofString()).body();
 
-                debugLog("Profile response: {}", str);
                 var json = GsonHelper.parse(str);
 
                 var ctx = "profile response";
