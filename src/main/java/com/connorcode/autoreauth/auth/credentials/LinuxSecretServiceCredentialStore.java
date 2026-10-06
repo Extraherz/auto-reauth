@@ -1,12 +1,14 @@
 package com.connorcode.autoreauth.auth.credentials;
 
+import de.swiesend.secretservice.Item;
+import de.swiesend.secretservice.Prompt;
+import de.swiesend.secretservice.Service;
 import de.swiesend.secretservice.functional.Collection;
 import de.swiesend.secretservice.functional.interfaces.CollectionInterface;
+import org.freedesktop.dbus.DBusPath;
+import org.freedesktop.dbus.connections.impl.DBusConnectionBuilder;
 
-import java.util.Arrays;
-import java.util.Map;
-import java.util.Optional;
-import java.util.UUID;
+import java.util.*;
 
 public final class LinuxSecretServiceCredentialStore
         implements CredentialStore {
@@ -52,23 +54,9 @@ public final class LinuxSecretServiceCredentialStore
                     );
                 }
 
-                for (int i = 1;
-                     i < existingItems.size();
-                     i++) {
-
-                    collection.deleteItem(
-                            existingItems.get(i)
-                    );
-                }
-
-                var remainingItems =
-                        collection.getItems(
-                                attributes
-                        ).orElseGet(java.util.List::of);
-
-                if (remainingItems.size() > 1) {
+                if (existingItems.size() > 1) {
                     throw new CredentialStoreException(
-                            "Failed to remove duplicate Linux Secret Service credentials",
+                            "Multiple Linux Secret Service credentials exist for the same account",
                             null
                     );
                 }
@@ -147,25 +135,153 @@ public final class LinuxSecretServiceCredentialStore
     public void delete(
             UUID accountId
     ) {
-        try (var collection = openCollection()) {
-            var attributes =
-                    attributes(accountId);
+        var attributes =
+                attributes(accountId);
 
-            var items =
-                    collection.getItems(
+        try (var connection =
+                     DBusConnectionBuilder
+                             .forSessionBus()
+                             .build()) {
+
+            var service =
+                    new Service(
+                            connection
+                    );
+
+            var searchResult =
+                    service.searchItems(
                             attributes
-                    ).orElseGet(java.util.List::of);
+                    );
 
-            for (var item : items) {
-                collection.deleteItem(item);
+            if (searchResult.isEmpty()) {
+                return;
             }
 
-            var remainingItems =
-                    collection.getItems(
-                            attributes
-                    ).orElseGet(java.util.List::of);
+            var unlockedItems =
+                    new ArrayList<DBusPath>(
+                            searchResult.get().a
+                    );
 
-            if (!remainingItems.isEmpty()) {
+            var lockedItems =
+                    new ArrayList<DBusPath>(
+                            searchResult.get().b
+                    );
+
+            if (!lockedItems.isEmpty()) {
+                var unlockResult =
+                        service.unlock(
+                                lockedItems
+                        ).orElseThrow(
+                                () ->
+                                        new CredentialStoreException(
+                                                "Failed to unlock Linux Secret Service credentials",
+                                                null
+                                        )
+                        );
+
+                unlockedItems.addAll(
+                        unlockResult.a
+                );
+
+                var promptPath =
+                        unlockResult.b;
+
+                if (promptPath != null
+                        && !"/".equals(
+                        promptPath.getPath()
+                )) {
+
+                    var prompt =
+                            new Prompt(
+                                    service
+                            );
+
+                    var completed =
+                            prompt.await(
+                                    promptPath
+                            );
+
+                    if (completed == null
+                            || completed.dismissed) {
+                        throw new CredentialStoreException(
+                                "Linux Secret Service unlock prompt was not completed",
+                                null
+                        );
+                    }
+                }
+
+                /*
+                 * Search again after unlocking so we operate on the actual
+                 * current state reported by the Secret Service.
+                 */
+                var refreshed =
+                        service.searchItems(
+                                attributes
+                        ).orElseThrow(
+                                () ->
+                                        new CredentialStoreException(
+                                                "Failed to refresh Linux Secret Service credentials after unlock",
+                                                null
+                                        )
+                        );
+
+                unlockedItems.clear();
+                unlockedItems.addAll(
+                        refreshed.a
+                );
+                unlockedItems.addAll(
+                        refreshed.b
+                );
+            }
+
+            for (var itemPath : unlockedItems) {
+                var item =
+                        new Item(
+                                itemPath,
+                                service
+                        );
+
+                var deletePrompt =
+                        item.delete()
+                                .orElseThrow(
+                                        () ->
+                                                new CredentialStoreException(
+                                                        "Failed to request deletion of Linux Secret Service credential",
+                                                        null
+                                                )
+                                );
+
+                if (!"/".equals(
+                        deletePrompt.getPath()
+                )) {
+                    var prompt =
+                            new Prompt(
+                                    service
+                            );
+
+                    var completed =
+                            prompt.await(
+                                    deletePrompt
+                            );
+
+                    if (completed == null
+                            || completed.dismissed) {
+                        throw new CredentialStoreException(
+                                "Linux Secret Service delete prompt was not completed",
+                                null
+                        );
+                    }
+                }
+            }
+
+            var remaining =
+                    service.searchItems(
+                            attributes
+                    );
+
+            if (remaining.isPresent()
+                    && (!remaining.get().a.isEmpty()
+                    || !remaining.get().b.isEmpty())) {
                 throw new CredentialStoreException(
                         "Failed to delete Linux Secret Service credential",
                         null
