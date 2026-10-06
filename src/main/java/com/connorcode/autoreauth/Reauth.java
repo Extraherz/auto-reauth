@@ -81,17 +81,42 @@ public class Reauth {
     }
 
     public static CompletableFuture<Void> attemptReauth(Screen parent, Config.Account account) {
-        return MicrosoftAuth.authenticate(account.accessToken()).thenAccept(session -> {
-            try {
-                AuthUtils.setSession(session);
-            } catch (AuthenticationException e) {
-                log.error("Error re-authenticating", e);
-            }
-            authStatus = AuthUtils.getAuthStatus();
-            Misc.sendToast("AutoReauth", String.format("Authenticated as %s!", session.getName()));
-        }).exceptionally(e -> {
+        var refreshToken =
+                config.getRefreshToken(account);
+
+        if (refreshToken.isEmpty()) {
+            return CompletableFuture.failedFuture(
+                    new IllegalStateException(
+                            "No stored refresh token for account "
+                                    + account.username()
+                    )
+            );
+        }
+        return MicrosoftAuth.authenticate(refreshToken.get())
+                .thenAccept(result -> {
+                    var session = result.session();
+
+                    var updatedAccount = new Config.Account(session);
+
+                    config.addAccount(updatedAccount);
+
+                    config.saveRefreshToken(updatedAccount, result.accessToken().refreshToken());
+
+                    config.save();
+
+                    try {
+                        AuthUtils.setSession(session);
+                    } catch (AuthenticationException e) {
+                        log.error("Error re-authenticating", e);
+                    }
+
+                    authStatus = AuthUtils.getAuthStatus();
+
+                    Misc.sendToast("AutoReauth", String.format("Authenticated as %s!", session.getName()));
+                }).exceptionally(e -> {
             log.error("Error re-authenticating", e);
-            client.execute(() -> client.gui.setScreen(new ErrorScreen(parent, "Error re-authenticating", e.toString())));
+            client.execute(() ->
+                    client.gui.setScreen(new ErrorScreen(parent, "Error re-authenticating", e.toString())));
             return null;
         });
     }

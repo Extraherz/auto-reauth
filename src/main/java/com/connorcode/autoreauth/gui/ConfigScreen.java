@@ -64,9 +64,15 @@ public class ConfigScreen extends Screen {
             if (selected != null) config.defaultAccount = selected.account;
         }).width(74).build());
         footerTop.addChild(Button.builder(Component.nullToEmpty("Add Account"), (button) -> MicrosoftAuth.getCode(semaphore)
-                .thenCompose(MicrosoftAuth::getAccessToken).thenCompose(access -> MicrosoftAuth.authenticate(access)
-                        .thenApply(session -> new java.util.AbstractMap.SimpleEntry<>(access, session))).thenAccept(pair -> {
-                    config.addAccount(new Config.Account(pair.getKey(), pair.getValue()));
+                .thenCompose(MicrosoftAuth::authenticate)
+                .thenAccept(result -> {
+                    var account = new Config.Account(result.session());
+
+                    config.addAccount(account);
+
+                    config.saveRefreshToken(account, result.accessToken().refreshToken());
+
+                    config.save();
                     config.save();
 
                     authStatus = AuthUtils.getAuthStatus();
@@ -83,7 +89,7 @@ public class ConfigScreen extends Screen {
         footerBottom.addChild(callbackButton(clicked -> {
             config.debug ^= clicked;
             return "Debug: " + (config.debug ? "On" : "Off");
-        }).width(100).tooltip(Tooltip.create(Component.nullToEmpty("Warning: Debug mode will send authentication tokens in the log.")))
+        }).width(100).tooltip(Tooltip.create(Component.nullToEmpty("Enables additional diagnostic logging.")))
                 .build());
         footerBottom.addChild(callbackButton(clicked -> {
             config.auto ^= clicked;
