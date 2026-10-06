@@ -1,5 +1,6 @@
 package com.connorcode.autoreauth.auth.credentials;
 
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 
 import java.nio.file.Files;
@@ -11,6 +12,23 @@ class CredentialStoreIntegrationTest {
 
     @Test
     void credentialRoundTripWorks() throws Exception {
+        var osName =
+                System.getProperty(
+                        "os.name",
+                        ""
+                ).toLowerCase();
+
+        if (osName.contains("linux")) {
+            Assumptions.assumeTrue(
+                    "true".equalsIgnoreCase(
+                            System.getenv(
+                                    "AUTO_REAUTH_LINUX_CREDENTIAL_TEST"
+                            )
+                    ),
+                    "Linux Secret Service integration test requires an initialized keyring"
+            );
+        }
+
         var baseDirectory =
                 Files.createTempDirectory(
                         "auto-reauth-test"
