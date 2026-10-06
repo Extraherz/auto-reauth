@@ -61,6 +61,18 @@ public final class LinuxSecretServiceCredentialStore
                     );
                 }
 
+                var remainingItems =
+                        collection.getItems(
+                                attributes
+                        ).orElseGet(java.util.List::of);
+
+                if (remainingItems.size() > 1) {
+                    throw new CredentialStoreException(
+                            "Failed to remove duplicate Linux Secret Service credentials",
+                            null
+                    );
+                }
+
                 return;
             }
 
@@ -136,18 +148,28 @@ public final class LinuxSecretServiceCredentialStore
             UUID accountId
     ) {
         try (var collection = openCollection()) {
+            var attributes =
+                    attributes(accountId);
+
             var items =
                     collection.getItems(
-                            attributes(accountId)
+                            attributes
                     ).orElseGet(java.util.List::of);
 
             for (var item : items) {
-                if (!collection.deleteItem(item)) {
-                    throw new CredentialStoreException(
-                            "Failed to delete Linux Secret Service credential",
-                            null
-                    );
-                }
+                collection.deleteItem(item);
+            }
+
+            var remainingItems =
+                    collection.getItems(
+                            attributes
+                    ).orElseGet(java.util.List::of);
+
+            if (!remainingItems.isEmpty()) {
+                throw new CredentialStoreException(
+                        "Failed to delete Linux Secret Service credential",
+                        null
+                );
             }
         } catch (CredentialStoreException exception) {
             throw exception;
