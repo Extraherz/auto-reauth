@@ -11,7 +11,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class CredentialStoreIntegrationTest {
 
     @Test
-    void credentialRoundTripWorks() throws Exception {
+    void credentialRoundTripWorks() throws Throwable {
         var osName =
                 System.getProperty(
                         "os.name",
@@ -46,6 +46,8 @@ class CredentialStoreIntegrationTest {
                 "test-refresh-token-"
                         + UUID.randomUUID();
 
+        Throwable failure = null;
+
         try {
             store.save(
                     accountId,
@@ -70,8 +72,21 @@ class CredentialStoreIntegrationTest {
                     store.load(accountId)
                             .isEmpty()
             );
+        } catch (Throwable throwable) {
+            failure = throwable;
+            throw throwable;
         } finally {
-            store.delete(accountId);
+            try {
+                store.delete(accountId);
+            } catch (Throwable cleanupFailure) {
+                if (failure != null) {
+                    failure.addSuppressed(
+                            cleanupFailure
+                    );
+                } else {
+                    throw cleanupFailure;
+                }
+            }
         }
     }
 }
